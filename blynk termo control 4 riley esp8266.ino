@@ -1,12 +1,12 @@
 /* Fill-in your Template ID (only if using Blynk.Cloud) */
-#define BLYNK_TEMPLATE_ID ""
-#define BLYNK_DEVICE_NAME ""
-#define BLYNK_AUTH_TOKEN ""
+#define BLYNK_TEMPLATE_ID "TMPLTHdCXOMB"
+#define BLYNK_DEVICE_NAME "TERMOCONTROL"
+#define BLYNK_AUTH_TOKEN "vR0Dh0gIDF1QrMfeqwGqVe3JjzlVUfI6"
 
 // Your WiFi credentials.
 // Set password to "" for open networks.
-const char* ssid = "";
-const char* password = "";
+const char* ssid = "SFR_EDD0";
+const char* password = "vigen201402";
 
 #define BLYNK_PRINT Serial
 #include <ESP8266WiFi.h> 
@@ -24,38 +24,44 @@ const char* password = "";
 using namespace ace_button;
 Preferences pref;
 
-#define DHTPIN            TX //D23  pin connected with DHT
-// Uncomment whatever type you're using!
-#define DHTTYPE DHT11     // DHT 11
-//#define DHTTYPE DHT22   // DHT 22, AM2302, AM2321
+ #define DHTPIN           D4
+//#define DHTTYPE DHT11     
+ #define DHTTYPE DHT22   // DHT 22, AM2302, AM2321
 //#define DHTTYPE DHT21   // DHT 21, AM2301
-
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+ #define LDR_PIN             A0
+ 
+ 
+ 
+ 
+ #define SCREEN_WIDTH 128 // OLED display width, in pixels
+ #define SCREEN_HEIGHT 64 // OLED display height, in pixels
+ #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+ #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+  Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // Setpoint and setHumi values (in degrees Celsius)
-float setTemp = 0;
-float setHumi = 0;
-float currentTemp = 0;
-float currentHumi = 0;
-
-
+ float setTemp = 0;
+ float setHumi = 0;
+ float currentTemp = 0;
+ float currentHumi = 0;
+ int   ldrVal;
 
 // define the GPIO connected with Relays and Buttons
-#define RelayPin1 5  //D1
+#define RelayPin1 0  //D1
 #define RelayPin2 4  //D2
+#define RelayPin3 5   //D4
 
-#define ButtonPin1 10 //D25
-#define ButtonPin2 D5  //D26 
-#define ButtonPin3 13  //D27
 
-#define wifiLed   16   //D2
+
+    //GPIO pins
+#define ButtonPin1 9 
+#define ButtonPin2 10 
+#define ButtonPin3 14 
+#define ButtonPin4 12
+#define wifiLed   16   
 
 //Change the virtual pins according the rooms
-#define VPIN_Text           V0
+
 #define VPIN_Mode           V1
 #define VPIN_currentTemp    V2
 #define VPIN_currentHumi    V3
@@ -63,14 +69,21 @@ float currentHumi = 0;
 #define VPIN_setHumi        V5
 #define VPIN_Heater         V6
 #define VPIN_Humidifier     V7
+#define VPIN_Light          V8
+#define VPIN_LDR            V9
+#define VPIN_ldrVal        V10
 
 // Relay and Mode State
 bool heaterState = LOW; //Define integer to remember the toggle state for heater
 bool humidifierState = LOW; //Define integer to remember the toggle state for Humidifier
 bool modeState = LOW; //Define integer to remember the mode
-
+bool LightState = LOW;
 int wifiFlag = 0;
 
+
+
+const int maxLight = 1000;    //maximum value lux for off raley 
+const int minLight = 200;    //minimum value lux for on raley 
 
 char auth[] = BLYNK_AUTH_TOKEN;
 
@@ -80,10 +93,12 @@ ButtonConfig config2;
 AceButton button2(&config2);
 ButtonConfig config3;
 AceButton button3(&config3);
-
+ButtonConfig config4;
+AceButton button4(&config4);
 void handleEvent1(AceButton*, uint8_t, uint8_t);
 void handleEvent2(AceButton*, uint8_t, uint8_t);
 void handleEvent3(AceButton*, uint8_t, uint8_t);
+void handleEvent4(AceButton*, uint8_t, uint8_t);
 
 
 BlynkTimer timer;
@@ -103,6 +118,14 @@ BLYNK_WRITE(VPIN_Humidifier) {
   pref.putBool("Humidifier", humidifierState);
 }
 
+BLYNK_WRITE(VPIN_Light) {
+ LightState = param.asInt();
+  digitalWrite(RelayPin3, !LightState);
+  pref.putBool("Light", LightState);
+}
+
+
+
 BLYNK_WRITE(VPIN_Mode) {
   modeState = param.asInt();
   pref.putBool("Mode", modeState);
@@ -116,6 +139,13 @@ BLYNK_WRITE(VPIN_setTemp) {
 BLYNK_WRITE(VPIN_setHumi) {
   setHumi = param.asFloat();
   pref.putBool("Humidity", setHumi);
+}
+BLYNK_WRITE(VPIN_ldrVal) {
+  ldrVal = param.asFloat();
+  pref.putBool("Light", ldrVal);
+
+
+
 }
 
 void checkBlynkStatus() { // called every 2 seconds by SimpleTimer
@@ -136,22 +166,25 @@ void checkBlynkStatus() { // called every 2 seconds by SimpleTimer
     display.setCursor(0, 2);
     display.println(" Blynk IoT Connected ");
     digitalWrite(wifiLed, HIGH);
-    Blynk.virtualWrite(VPIN_Text, "IoT Temperature & Humidity Controller");
+    
   }
   display.display();
   delay(1000);
 }
 
 BLYNK_CONNECTED() {
-  // update the latest state to the server
-  Blynk.virtualWrite(VPIN_Text, "IoT Temperature & Humidity Controller");
+  // update the latest state to the server   ,"Temp-"
+  
   Blynk.virtualWrite(VPIN_Mode, modeState);
   Blynk.syncVirtual(VPIN_currentTemp);
+  Blynk.syncVirtual(VPIN_LDR);
   Blynk.syncVirtual(VPIN_currentHumi);
   Blynk.syncVirtual(VPIN_setTemp);
+  Blynk.syncVirtual(VPIN_ldrVal);
   Blynk.syncVirtual(VPIN_setHumi);
   Blynk.virtualWrite(VPIN_Heater, heaterState);
   Blynk.virtualWrite(VPIN_Humidifier, humidifierState);
+  Blynk.virtualWrite(VPIN_Light,LightState);
 
 }
 
@@ -163,12 +196,14 @@ void setup()
 
   pinMode(RelayPin1, OUTPUT);
   pinMode(RelayPin2, OUTPUT);
+  pinMode(RelayPin3, OUTPUT);
   pinMode(wifiLed, OUTPUT);
-
+  pinMode(A0, INPUT);
+ 
   pinMode(ButtonPin1, INPUT_PULLUP);
   pinMode(ButtonPin2, INPUT_PULLUP);
   pinMode(ButtonPin3, INPUT_PULLUP);
-
+  pinMode(ButtonPin4, INPUT_PULLUP);
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
@@ -181,20 +216,27 @@ void setup()
   //During Starting all Relays should TURN OFF
   digitalWrite(RelayPin1, !heaterState);
   digitalWrite(RelayPin2, !humidifierState);
-
+  digitalWrite(RelayPin3, !LightState);
   dht.begin();    // Enabling DHT sensor
   digitalWrite(wifiLed, LOW);
 
   config1.setEventHandler(button1Handler);
   config2.setEventHandler(button2Handler);
   config3.setEventHandler(button3Handler);
-
+  config4.setEventHandler(button4Handler);
   button1.init(ButtonPin1);
   button2.init(ButtonPin2);
   button3.init(ButtonPin3);
-
+  button4.init(ButtonPin4);
+  
+  
+  
   //Blynk.begin(auth, ssid, pass);
+
+ 
  Serial.begin(115200);
+    
+    
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
     delay(5000);
@@ -210,19 +252,25 @@ void setup()
   delay(1000);
 
   getRelayState(); // Get the last state of Relays and Set values of Temp & Humidity
-
+  Blynk.virtualWrite(VPIN_Light,LightState);
   Blynk.virtualWrite(VPIN_Heater, heaterState);
   Blynk.virtualWrite(VPIN_Humidifier, humidifierState);
   Blynk.virtualWrite(VPIN_setTemp, setTemp);
   Blynk.virtualWrite(VPIN_setHumi, setHumi);
+  Blynk.virtualWrite(VPIN_ldrVal, ldrVal);
+   
+
 }
 
 
-void readSensor() {
 
+
+void readSensor() {
+  //ldrVal = map(analogRead(LDR_PIN), 0, 1024, 1000,0);
+  ldrVal = analogRead(LDR_PIN);
   currentTemp = dht.readTemperature();
   currentHumi = dht.readHumidity();
-  if (isnan(currentHumi) || isnan(currentTemp)) {
+  if (isnan(currentHumi) || isnan(currentTemp)|| isnan(ldrVal))  {
     Serial.println("Failed to read from DHT sensor!");
     return;
   }
@@ -233,14 +281,15 @@ void sendSensor()
   readSensor();
   // You can send any value at any time.
   // Please don't send more that 10 values per second.
-  Blynk.virtualWrite(VPIN_Text, "IoT Temperature & Humidity Controller");
+  
   Blynk.virtualWrite(VPIN_currentTemp, currentTemp);
   Blynk.virtualWrite(VPIN_currentHumi, currentHumi);
+  Blynk.virtualWrite(VPIN_LDR, ldrVal);
 }
 
 void getRelayState()
 {
-  //Serial.println("reading data from NVS");
+  //Serial.println("reading data from NVS");    VPIN_Light   
   modeState = pref.getBool("Mode", 0);
   Blynk.virtualWrite(VPIN_Mode, modeState);
   delay(200);
@@ -248,15 +297,26 @@ void getRelayState()
   digitalWrite(RelayPin1, !heaterState);
   Blynk.virtualWrite(VPIN_Heater, heaterState);
   delay(200);
-  humidifierState = pref.getBool("Humidifier", 0);
+  
+   humidifierState = pref.getBool("Humidifier", 0);
   digitalWrite(RelayPin2, !humidifierState);
   Blynk.virtualWrite(VPIN_Humidifier, humidifierState);
   delay(200);
+  
+  LightState = pref.getBool("Light", 0);
+  digitalWrite(RelayPin3, !LightState);
+  Blynk.virtualWrite(VPIN_Light, LightState);
+  delay(200);
+  
   setTemp = pref.getBool("setemp", 0);
   Blynk.virtualWrite(VPIN_setTemp, setTemp);
   delay(200);
   setHumi = pref.getBool("Humidity", 0);
   Blynk.virtualWrite(VPIN_setHumi, setHumi);
+  delay(200);
+
+ldrVal = pref.getBool("Lux", 0);
+  Blynk.virtualWrite(VPIN_LDR, ldrVal);
   delay(200);
 }
 
@@ -330,12 +390,35 @@ void DisplayData()  {
 
 void loop()
 {
+ 
+  //LDR control Relay 3
+      if( ldrVal < minLight){
+        if(LightState == 0){
+          digitalWrite(VPIN_Light, HIGH); // turn ON relay 3
+          LightState = 1;
+          // Update Button Widget
+          Blynk.virtualWrite(VPIN_Light, LightState);
+        }
+      }
+      else if (ldrVal > maxLight){
+        if(LightState == 1){
+           digitalWrite(VPIN_Light, LOW); // turn OFF relay 3
+           LightState = 0;
+           // Update Button Widget
+           Blynk.virtualWrite(VPIN_Light, LightState);
+          }
+      } 
+     
+  
+  
+  
   Blynk.run();
   timer.run();
   DisplayData();
   button1.check();
   button2.check();
   button3.check();
+  button4.check();
 }
 
 void button1Handler(AceButton* button, uint8_t eventType, uint8_t buttonState) {
@@ -367,6 +450,19 @@ void button3Handler(AceButton* button, uint8_t eventType, uint8_t buttonState) {
       humidifierState = !humidifierState;
       pref.putBool("VPIN_Humidifier", humidifierState);
       Blynk.virtualWrite(VPIN_Humidifier, humidifierState);
+      break;
+  }
+}
+
+
+void button4Handler(AceButton* button, uint8_t eventType, uint8_t buttonState) {
+  Serial.println("Light");
+  switch (eventType) {
+    case AceButton::kEventReleased:
+      digitalWrite(RelayPin3, LightState);
+      LightState = !LightState;
+      pref.putBool("VPIN_Light", LightState);
+      Blynk.virtualWrite(VPIN_Light,LightState);
       break;
   }
 }
