@@ -1,7 +1,7 @@
 /* Fill-in your Template ID (only if using Blynk.Cloud) */
-#define BLYNK_TEMPLATE_ID "TMPLTHdCXOMB"
-#define BLYNK_DEVICE_NAME "TERMOCONTROL"
-#define BLYNK_AUTH_TOKEN "vR0Dh0gIDF1QrMfeqwGqVe3JjzlVUfI6"
+#define BLYNK_TEMPLATE_ID ""
+#define BLYNK_DEVICE_NAME ""
+#define BLYNK_AUTH_TOKEN ""
 
 // Your WiFi credentials.
 // Set password to "" for open networks.
